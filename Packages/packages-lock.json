@@ -63,15 +63,6 @@
       },
       "url": "https://packages.unity.com"
     },
-    "com.unity.ide.visualstudio": {
-      "version": "2.0.26",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {
-        "com.unity.test-framework": "1.1.33"
-      },
-      "url": "https://packages.unity.com"
-    },
     "com.unity.inputsystem": {
       "version": "1.14.2",
       "depth": 0,
@@ -279,7 +270,7 @@
         "com.unity.nuget.newtonsoft-json": "3.2.1",
         "com.unity.collections": "2.6.2"
       },
-      "hash": "1fa1153376fad247748142e07c99bee12029ea2d"
+      "hash": "1d9cb2e2a33ded129933064e6764230dba226f8e"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",

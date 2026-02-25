@@ -39,7 +39,8 @@ namespace PurrNet.Prediction
             BuiltInSystems.Physics2D |
             BuiltInSystems.Time |
             BuiltInSystems.Hierarchy |
-            BuiltInSystems.Players;
+            BuiltInSystems.Players |
+            BuiltInSystems.Random;
         [SerializeField] private PredictedPrefabs _predictedPrefabs;
         [SerializeField] private InputQueueSettings _inputQueueSettings = new()
         {
@@ -314,7 +315,7 @@ namespace PurrNet.Prediction
             return system;
         }
 
-        public void RegisterInstance(GameObject go, PredictedObjectID objectID, PlayerID? owner, bool reset)
+        public void RegisterInstance(GameObject go, PredictedObjectID objectID, PlayerID? owner, bool reset, bool triggedOnRemovedFromPool)
         {
             var components = ListPool<PredictedIdentity>.Instantiate();
             go.GetComponentsInChildren(true, components);
@@ -329,7 +330,8 @@ namespace PurrNet.Prediction
                     component.OnPreSetup();
                     if (reset)
                          component.ResetState();
-                    // else component.TriggerOnRemovedFromPool();
+                    if (triggedOnRemovedFromPool)
+                        component.TriggerOnRemovedFromPool();
                     RegisterInstance(component, objectID, i, owner);
                 }
             }
@@ -337,7 +339,7 @@ namespace PurrNet.Prediction
             ListPool<PredictedIdentity>.Destroy(components);
         }
 
-        public void UnregisterInstance(GameObject go, bool reset)
+        public void UnregisterInstance(GameObject go, bool reset, bool destroyEvent)
         {
             if (!go)
                 return;
@@ -352,8 +354,8 @@ namespace PurrNet.Prediction
                     if (reset)
                         components[i].ResetState();
                     UnregisterInstance(components[i]);
-                    /*components[i].TriggerDestroyedEvent();
-                    components[i].TriggerOnPooledEvent();*/
+                    if (destroyEvent)
+                        components[i].TriggerDestroyedEvent();
                 }
             }
 
@@ -601,13 +603,13 @@ namespace PurrNet.Prediction
                     _systems[i].RunSimulateTick(localTick, delta);
             }
 
+            DoPhysicsPass();
+
             using (LateSimulateMarker.Auto())
             {
                 for (var i = 0; i < _systemsCount; i++)
                     _systems[i].RunLateSimulateTick(delta);
             }
-
-            DoPhysicsPass();
 
             using (SaveHistoryMarker.Auto())
             {
@@ -1033,13 +1035,13 @@ namespace PurrNet.Prediction
                     _systems[j].RunSimulateTick(verifiedTick, delta);
             }
 
+            DoPhysicsPass();
+
             using (LateSimulateMarker.Auto())
             {
                 for (var j = 0; j < _systemsCount; j++)
                     _systems[j].RunLateSimulateTick(delta);
             }
-
-            DoPhysicsPass();
 
             for (var i = 0; i < _systemsCount; i++)
                 _systems[i].PostSimulate();
@@ -1071,13 +1073,13 @@ namespace PurrNet.Prediction
                     _systems[j].RunSimulateTick(stateTick, delta);
             }
 
+            DoPhysicsPass();
+
             using (LateSimulateMarker.Auto())
             {
                 for (var j = 0; j < _systemsCount; j++)
                     _systems[j].RunLateSimulateTick(delta);
             }
-
-            DoPhysicsPass();
 
             for (var i = 0; i < _systemsCount; i++)
                 _systems[i].PostSimulate();
@@ -1123,13 +1125,13 @@ namespace PurrNet.Prediction
                     _systems[j].RunSimulateTick(verifiedTick, delta);
             }
 
+            DoPhysicsPass();
+
             using (LateSimulateMarker.Auto())
             {
                 for (var j = 0; j < _systemsCount; j++)
                     _systems[j].RunLateSimulateTick(delta);
             }
-
-            DoPhysicsPass();
 
             if (saveState)
             {
@@ -1268,6 +1270,18 @@ namespace PurrNet.Prediction
                 for (var i = 0; i < _systemsCount; i++)
                     _systems[i].RunUpdateView(dt);
             }
+
+            LateUpdateView();
+        }
+
+        private void LateUpdateView()
+        {
+            using (UpdateViewMarker.Auto())
+            {
+                var dt = Time.unscaledDeltaTime;
+                for (var i = 0; i < _systemsCount; i++)
+                    _systems[i].RunLateUpdateView(dt);
+            }
         }
 
         public bool TryGetPrefab(int pid, out GameObject prefab)
@@ -1341,13 +1355,13 @@ namespace PurrNet.Prediction
                 var trs = go.transform;
                 ProperlySetPosAndRot(trs, position, rotation);
                 trs.SetParent(null);
-                RegisterInstance(go, objectId, owner, true);
+                RegisterInstance(go, objectId, owner, true, true);
                 return go;
             }
             else
             {
                 var go = UnityProxy.InstantiateDirectly(prefab, position, rotation, gameObject.scene);
-                RegisterInstance(go, objectId, owner, false);
+                RegisterInstance(go, objectId, owner, false, false);
                 return go;
             }
         }
@@ -1358,6 +1372,7 @@ namespace PurrNet.Prediction
 
             if (!_predictedPrefabs || pid < 0 || pid >= _predictedPrefabs.prefabs.Count)
             {
+                UnregisterInstance(instance, false, true);
                 UnityProxy.DestroyImmediateDirectly(instance);
                 return;
             }
@@ -1366,6 +1381,7 @@ namespace PurrNet.Prediction
 
             if (!prefabsInfo.pooling.usePooling)
             {
+                UnregisterInstance(instance, false, true);
                 UnityProxy.DestroyImmediateDirectly(instance);
                 return;
             }
@@ -1375,7 +1391,11 @@ namespace PurrNet.Prediction
                 UnregisterPooledInstance(instance);
                 pool.Delete(instance);
             }
-            else UnityProxy.DestroyImmediateDirectly(instance);
+            else
+            {
+                UnregisterInstance(instance, false, true);
+                UnityProxy.DestroyImmediateDirectly(instance);
+            }
         }
 
         public void SetOwnership(PredictedObjectID? root, PlayerID? player)
